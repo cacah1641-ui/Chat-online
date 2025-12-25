@@ -1,65 +1,23 @@
-const express = require('express');
-const app = express();
-const path = require('path');
-const fs = require('fs');
-
-// Vercel menggunakan /tmp untuk file sementara
-const DB_FILE = '/tmp/messages.json';
-
-function loadMessages() {
-    try {
-        if (fs.existsSync(DB_FILE)) return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-    } catch (e) { console.log("Database baru dibuat."); }
-    return [];
-}
-
-function saveMessages(data) {
-    try {
-        fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
-    } catch (e) { console.error("Gagal menyimpan ke file!"); }
-}
-
-app.use(express.json({ limit: '50mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
-
-let messages = loadMessages();
-let onlineUsers = {}; 
-
-app.get('/api/messages', (req, res) => {
-    const room = req.query.room || 'Utama';
-    res.json(messages.filter(m => m.room === room));
-});
-
-app.post('/api/messages', (req, res) => {
-    const { room, text, image, audio, senderId } = req.body;
-    const newMessage = {
-        room: room || 'Utama', text, image, audio, senderId,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-    messages.push(newMessage);
-    if (messages.length > 500) messages.shift();
-    saveMessages(messages);
-    res.status(201).json({ status: 'OK' });
-});
-
-app.delete('/api/messages', (req, res) => {
-    messages = [];
-    saveMessages(messages);
-    res.json({ status: 'History Cleared' });
-});
-
 app.post('/api/heartbeat', (req, res) => {
     const { userId, room } = req.body;
+    
+    // Simpan waktu terakhir user terlihat
     onlineUsers[userId] = { room, lastSeen: Date.now() };
-    const count = Object.values(onlineUsers).filter(u => 
-        u.room === room && (Date.now() - u.lastSeen < 10000)
-    ).length;
-    res.json({ onlineCount: count });
+
+    // Bersihkan user yang sudah tidak mengirim heartbeat lebih dari 10 detik (dianggap offline)
+    const now = Date.now();
+    Object.keys(onlineUsers).forEach(id => {
+        if (now - onlineUsers[id].lastSeen > 10000) {
+            delete onlineUsers[id];
+        }
+    });
+
+    // Hitung berapa user yang ada di room yang sama
+    const usersInRoom = Object.values(onlineUsers).filter(u => u.room === room);
+    const count = usersInRoom.length;
+
+    res.json({ 
+        onlineCount: count,
+        status: count > 1 ? "Online" : "Offline" 
+    });
 });
-
-if (require.main === module) {
-    const PORT = process.env.PORT || 3000;
-    app.listen(PORT, () => console.log(`Server jalan di port ${PORT}`));
-}
-
-module.exports = app;
