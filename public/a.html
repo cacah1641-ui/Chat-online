@@ -21,7 +21,10 @@
                 <div class="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center font-bold">B</div>
                 <div>
                     <h2 class="font-bold text-sm">User B</h2>
-                    <p id="status" class="text-[10px] text-gray-200">Offline</p>
+                    <div class="flex items-center gap-1">
+                        <div id="statusDot" class="w-2 h-2 rounded-full bg-gray-400"></div>
+                        <p id="status" class="text-[10px] text-gray-200">Offline</p>
+                    </div>
                 </div>
             </div>
             <button onclick="clearChat()" class="text-[10px] bg-white/10 px-2 py-1 rounded">Hapus Chat</button>
@@ -66,21 +69,23 @@
     </div>
 
     <script>
-        const SAYA = "A";
+        const SAYA = "USER_A", LAWAN = "USER_B";
         let mediaRecorder, chunks = [], currentMedia = null;
 
         async function fetchMsg() {
-            const res = await fetch('/api/messages');
-            const data = await res.json();
-            document.getElementById('chatBox').innerHTML = data.map(m => `
-                <div class="bubble ${m.senderId === SAYA ? 'mine' : 'theirs'}">
-                    ${m.image ? (m.image.includes('video') ? `<video src="${m.image}" controls class="max-w-full rounded">` : `<img src="${m.image}" class="max-w-full rounded">`) : ''}
-                    ${m.audio ? `<audio src="${m.audio}" controls class="w-40"></audio>` : ''}
-                    <p class="${m.text ? 'mt-1' : ''}">${m.text || ''}</p>
-                    <span class="text-[9px] block text-right opacity-50 mt-1">${m.time}</span>
-                </div>
-            `).join('');
-            document.getElementById('chatContainer').scrollTop = document.getElementById('chatBox').scrollHeight;
+            try {
+                const res = await fetch('/api/messages');
+                const data = await res.json();
+                document.getElementById('chatBox').innerHTML = data.map(m => `
+                    <div class="bubble ${m.senderId === SAYA ? 'mine' : 'theirs'}">
+                        ${m.image ? (m.image.includes('video') ? `<video src="${m.image}" controls class="max-w-full rounded">` : `<img src="${m.image}" class="max-w-full rounded">`) : ''}
+                        ${m.audio ? `<audio src="${m.audio}" controls class="w-40"></audio>` : ''}
+                        <p class="${m.text ? 'mt-1' : ''}">${m.text || ''}</p>
+                        <span class="text-[9px] block text-right opacity-50 mt-1">${m.time}</span>
+                    </div>
+                `).join('');
+                document.getElementById('chatContainer').scrollTop = document.getElementById('chatBox').scrollHeight;
+            } catch (e) {}
         }
 
         function handlePreview(inp) {
@@ -141,12 +146,20 @@
             });
         }
 
+        async function clearChat() { if(confirm("Hapus chat?")) { await fetch('/api/messages', { method: 'DELETE' }); fetchMsg(); } }
+
         setInterval(async () => {
-            const res = await fetch('/api/heartbeat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ userId:SAYA }) });
-            const data = await res.json();
-            document.getElementById('status').innerText = data.onlineCount > 1 ? "Online" : "Offline";
-            fetchMsg();
+            try {
+                const res = await fetch('/api/heartbeat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ userId:SAYA }) });
+                const data = await res.json();
+                const isOnline = data.usersOnline && data.usersOnline.includes(LAWAN);
+                document.getElementById('status').innerText = isOnline ? "Online" : "Offline";
+                document.getElementById('statusDot').className = `w-2 h-2 rounded-full ${isOnline ? 'bg-green-400' : 'bg-gray-400'}`;
+                fetchMsg();
+            } catch (e) {}
         }, 3000);
+
+        window.onload = fetchMsg;
     </script>
 </body>
 </html>
