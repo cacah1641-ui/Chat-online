@@ -1,67 +1,74 @@
 const express = require('express');
-const bodyParser = require('body-parser');
+const app = express();
 const path = require('path');
 
-const app = express();
-const PORT = 3000;
+// Middleware untuk parsing JSON dengan limit besar (untuk gambar/video/audio base64)
+app.use(express.json({ limit: '50mb' }));
 
-// Middleware
-app.use(bodyParser.json({ limit: '50mb' })); // Limit besar untuk kirim gambar/video base64
-app.use(express.static('.')); // Melayani file a.html dan b.html di folder yang sama
+// Melayani file statis (a.html dan b.html) dari folder saat ini
+app.use(express.static(__dirname));
 
 // Database sementara dalam memori
 let messages = [];
-let onlineUsers = {}; // Menyimpan timestamp terakhir aktivitas user
+let onlineUsers = {};
 
-// --- ENDPOINT API ---
-
-// 1. Ambil semua pesan
+/**
+ * API untuk mengambil semua pesan
+ */
 app.get('/api/messages', (req, res) => {
     res.json(messages);
 });
 
-// 2. Kirim pesan baru
+/**
+ * API untuk mengirim pesan baru (Teks, Gambar, Video, atau Audio)
+ */
 app.post('/api/messages', (req, res) => {
-    const { senderId, text, image, audio } = req.body;
-    
-    const newMessage = {
-        senderId,
-        text,
-        image, // string base64
-        audio, // string base64
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    const msg = { 
+        ...req.body, 
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
     };
-
-    messages.push(newMessage);
-    res.status(201).json(newMessage);
+    messages.push(msg);
+    
+    // Membatasi riwayat pesan agar tidak membebani memori server
+    if (messages.length > 100) messages.shift();
+    
+    res.status(201).json({ status: 'OK' });
 });
 
-// 3. Hapus semua pesan
-app.delete('/api/messages', (req, res) => {
-    messages = [];
-    res.json({ message: "Chat dibersihkan" });
-});
-
-// 4. Heartbeat (Cek status Online)
+/**
+ * API Heartbeat untuk melacak status online user
+ */
 app.post('/api/heartbeat', (req, res) => {
     const { userId } = req.body;
     if (userId) {
-        onlineUsers[userId] = Date.now(); // Update waktu terakhir aktif
+        onlineUsers[userId] = Date.now();
     }
 
-    // Filter user yang masih aktif dalam 5 detik terakhir
-    const now = Date.now();
-    const activeUsers = Object.keys(onlineUsers).filter(id => (now - onlineUsers[id]) < 5000);
-
-    res.json({ usersOnline: activeUsers });
+    const sekarang = Date.now();
+    // Jika user tidak mengirim heartbeat lebih dari 6 detik, anggap offline
+    for (const id in onlineUsers) {
+        if (sekarang - onlineUsers[id] > 6000) {
+            delete onlineUsers[id];
+        }
+    }
+    
+    res.json({ usersOnline: Object.keys(onlineUsers) });
 });
 
-// Jalankan Server
+/**
+ * API untuk menghapus seluruh riwayat chat
+ */
+app.delete('/api/messages', (req, res) => {
+    messages = []; 
+    res.json({ status: 'OK' });
+});
+
+// Menjalankan server pada port 3000
+const PORT = 3000;
 app.listen(PORT, () => {
-    console.log(`
-    ✅ Server WhatsApp Clone berjalan!
-    ----------------------------------
-    Buka User A: http://localhost:${PORT}/a.html
-    Buka User B: http://localhost:${PORT}/b.html
-    `);
+    console.log(`================================================`);
+    console.log(`✅ Server WhatsApp Clone Berhasil Dijalankan!`);
+    console.log(`🚀 URL User A: http://localhost:${PORT}/a.html`);
+    console.log(`🚀 URL User B: http://localhost:${PORT}/b.html`);
+    console.log(`================================================`);
 });
