@@ -1,74 +1,75 @@
 const express = require('express');
-const app = express();
 const path = require('path');
+const app = express();
 
-// Middleware untuk parsing JSON dengan limit besar (untuk gambar/video/audio base64)
+// Middleware: Parsing JSON dengan limit 50mb untuk mendukung kiriman Media (Base64)
 app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Melayani file statis (a.html dan b.html) dari folder saat ini
-app.use(express.static(__dirname));
-
-// Database sementara dalam memori
+// Database sementara dalam memori (Akan reset jika server idle di Vercel)
 let messages = [];
 let onlineUsers = {};
 
-/**
- * API untuk mengambil semua pesan
+// Melayani file statis (a.html dan b.html)
+app.use(express.static(path.join(__dirname, '/')));
+
+/** * API Endpoints
  */
+
+// Ambil semua pesan
 app.get('/api/messages', (req, res) => {
-    res.json(messages);
+    res.status(200).json(messages);
 });
 
-/**
- * API untuk mengirim pesan baru (Teks, Gambar, Video, atau Audio)
- */
+// Kirim pesan baru
 app.post('/api/messages', (req, res) => {
-    const msg = { 
-        ...req.body, 
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
-    };
-    messages.push(msg);
+    const { text, image, audio, senderId } = req.body;
     
-    // Membatasi riwayat pesan agar tidak membebani memori server
+    if (!senderId) return res.status(400).json({ error: "Sender ID diperlukan" });
+
+    const newMessage = {
+        senderId,
+        text: text || '',
+        image: image || null,
+        audio: audio || null,
+        time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+    };
+
+    messages.push(newMessage);
+    
+    // Batasi riwayat pesan di memori agar tidak crash (Max 100 pesan)
     if (messages.length > 100) messages.shift();
     
     res.status(201).json({ status: 'OK' });
 });
 
-/**
- * API Heartbeat untuk melacak status online user
- */
+// Heartbeat untuk status online
 app.post('/api/heartbeat', (req, res) => {
     const { userId } = req.body;
     if (userId) {
         onlineUsers[userId] = Date.now();
     }
 
-    const sekarang = Date.now();
-    // Jika user tidak mengirim heartbeat lebih dari 6 detik, anggap offline
-    for (const id in onlineUsers) {
-        if (sekarang - onlineUsers[id] > 6000) {
-            delete onlineUsers[id];
-        }
-    }
-    
-    res.json({ usersOnline: Object.keys(onlineUsers) });
+    const now = Date.now();
+    // User dianggap offline jika tidak ada heartbeat selama lebih dari 8 detik
+    const activeUsers = Object.keys(onlineUsers).filter(id => (now - onlineUsers[id]) < 8000);
+
+    res.json({ usersOnline: activeUsers });
 });
 
-/**
- * API untuk menghapus seluruh riwayat chat
- */
+// Hapus chat
 app.delete('/api/messages', (req, res) => {
-    messages = []; 
-    res.json({ status: 'OK' });
+    messages = [];
+    res.json({ status: 'Deleted' });
 });
 
-// Menjalankan server pada port 3000
-const PORT = 3000;
-app.listen(PORT, () => {
-    console.log(`================================================`);
-    console.log(`✅ Server WhatsApp Clone Berhasil Dijalankan!`);
-    console.log(`🚀 URL User A: http://localhost:${PORT}/a.html`);
-    console.log(`🚀 URL User B: http://localhost:${PORT}/b.html`);
-    console.log(`================================================`);
-});
+// Ekspor app untuk Vercel
+module.exports = app;
+
+// Jalankan server jika dijalankan secara lokal
+if (require.main === module) {
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, () => {
+        console.log(`Server aktif di port ${PORT}`);
+    });
+}
