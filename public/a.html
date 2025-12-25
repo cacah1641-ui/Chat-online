@@ -148,13 +148,22 @@
 
         async function clearChat() { if(confirm("Hapus chat?")) { await fetch('/api/messages', { method: 'DELETE' }); fetchMsg(); } }
 
+        // Interval dipercepat dan logika status diperbaiki
         setInterval(async () => {
             try {
-                const res = await fetch('/api/heartbeat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ userId:SAYA }) });
+                const res = await fetch('/api/heartbeat', { 
+                    method:'POST', 
+                    headers:{'Content-Type':'application/json'}, 
+                    body: JSON.stringify({ userId: SAYA }) 
+                });
                 const data = await res.json();
+                
+                // Cek apakah lawan ada dalam daftar yang dikirim server
                 const isOnline = data.usersOnline && data.usersOnline.includes(LAWAN);
+                
                 document.getElementById('status').innerText = isOnline ? "Online" : "Offline";
                 document.getElementById('statusDot').className = `w-2 h-2 rounded-full ${isOnline ? 'bg-green-400' : 'bg-gray-400'}`;
+                
                 fetchMsg();
             } catch (e) {}
         }, 3000);
