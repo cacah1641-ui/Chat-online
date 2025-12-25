@@ -1,33 +1,67 @@
 const express = require('express');
-const app = express();
+const bodyParser = require('body-parser');
 const path = require('path');
-const fs = require('fs');
 
-app.use(express.json({ limit: '50mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+const app = express();
+const PORT = 3000;
 
+// Middleware
+app.use(bodyParser.json({ limit: '50mb' })); // Limit besar untuk kirim gambar/video base64
+app.use(express.static('.')); // Melayani file a.html dan b.html di folder yang sama
+
+// Database sementara dalam memori
 let messages = [];
-let onlineUsers = {};
+let onlineUsers = {}; // Menyimpan timestamp terakhir aktivitas user
 
-app.get('/api/messages', (req, res) => res.json(messages));
-app.post('/api/messages', (req, res) => {
-    const msg = { ...req.body, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
-    messages.push(msg);
-    if (messages.length > 100) messages.shift();
-    res.status(201).json({ status: 'OK' });
+// --- ENDPOINT API ---
+
+// 1. Ambil semua pesan
+app.get('/api/messages', (req, res) => {
+    res.json(messages);
 });
 
+// 2. Kirim pesan baru
+app.post('/api/messages', (req, res) => {
+    const { senderId, text, image, audio } = req.body;
+    
+    const newMessage = {
+        senderId,
+        text,
+        image, // string base64
+        audio, // string base64
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+
+    messages.push(newMessage);
+    res.status(201).json(newMessage);
+});
+
+// 3. Hapus semua pesan
+app.delete('/api/messages', (req, res) => {
+    messages = [];
+    res.json({ message: "Chat dibersihkan" });
+});
+
+// 4. Heartbeat (Cek status Online)
 app.post('/api/heartbeat', (req, res) => {
     const { userId } = req.body;
-    onlineUsers[userId] = Date.now();
-    const sekarang = Date.now();
-    for (const id in onlineUsers) {
-        if (sekarang - onlineUsers[id] > 8000) delete onlineUsers[id];
+    if (userId) {
+        onlineUsers[userId] = Date.now(); // Update waktu terakhir aktif
     }
-    res.json({ onlineCount: Object.keys(onlineUsers).length });
+
+    // Filter user yang masih aktif dalam 5 detik terakhir
+    const now = Date.now();
+    const activeUsers = Object.keys(onlineUsers).filter(id => (now - onlineUsers[id]) < 5000);
+
+    res.json({ usersOnline: activeUsers });
 });
 
-app.delete('/api/messages', (req, res) => { messages = []; res.json({ status: 'OK' }); });
-
-const PORT = 3000;
-app.listen(PORT, () => console.log(`Server jalan di http://localhost:${PORT}`));
+// Jalankan Server
+app.listen(PORT, () => {
+    console.log(`
+    ✅ Server WhatsApp Clone berjalan!
+    ----------------------------------
+    Buka User A: http://localhost:${PORT}/a.html
+    Buka User B: http://localhost:${PORT}/b.html
+    `);
+});
