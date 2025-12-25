@@ -101,16 +101,19 @@
         const camBtn = document.getElementById('camBtn');
         let mediaRecorder, chunks = [], currentMedia = null;
 
-        // Fungsi Update UI yang lebih galak agar pasti hiden di HP
+        // FUNGSI UTAMA: Update UI (Hiden/Show Ikon)
         function updateInputUI() {
-            const hasContent = inp.value.trim().length > 0 || currentMedia !== null;
-            
-            if (hasContent) {
+            const hasText = inp.value.trim().length > 0;
+            const hasMedia = currentMedia !== null;
+
+            if (hasText || hasMedia) {
+                // Tampilkan Kirim, Sembunyikan Mic & Ikon Tambahan
                 sendBtn.style.display = "flex";
                 micBtn.style.display = "none";
                 attachBtn.style.display = "none";
                 camBtn.style.display = "none";
             } else {
+                // Tampilkan Mic & Ikon Tambahan, Sembunyikan Kirim
                 sendBtn.style.display = "none";
                 micBtn.style.display = "flex";
                 attachBtn.style.display = "flex";
@@ -118,8 +121,9 @@
             }
         }
 
-        // Listener input untuk HP (mendukung autocomplete & paste)
+        // Listener 'input' sangat penting untuk browser HP (Chrome/Safari)
         inp.addEventListener('input', updateInputUI);
+        // Listener 'keyup' sebagai cadangan untuk laptop
         inp.addEventListener('keyup', updateInputUI);
 
         async function fetchMsg() {
