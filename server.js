@@ -3,66 +3,87 @@ const app = express();
 const path = require('path');
 const fs = require('fs');
 
-// Gunakan folder /tmp agar Vercel bisa menulis file sementara
-const DB_FILE = '/tmp/messages.json';
+const DB_FILE = './messages.json';
 
+// Fungsi memuat pesan dari database lokal
 function loadMessages() {
     try {
-        if (fs.existsSync(DB_FILE)) return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-    } catch (e) { console.log("Database baru dibuat."); }
+        if (fs.existsSync(DB_FILE)) {
+            const data = fs.readFileSync(DB_FILE, 'utf8');
+            return JSON.parse(data);
+        }
+    } catch (e) { console.log("Database kosong, memulai baru."); }
     return [];
 }
 
+// Fungsi menyimpan pesan
 function saveMessages(data) {
     try {
         fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
-    } catch (e) { console.error("Gagal simpan file!"); }
+    } catch (e) { console.error("Gagal menyimpan database!"); }
 }
 
+// PENTING: Menaikkan limit untuk Video dan Foto (50mb)
 app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 let messages = loadMessages();
-let onlineUsers = {}; 
+let onlineUsers = {}; // Objek untuk melacak status online
 
+// API: Mengambil pesan
 app.get('/api/messages', (req, res) => {
     const room = req.query.room || 'Utama';
     res.json(messages.filter(m => m.room === room));
 });
 
+// API: Mengirim pesan (Teks, Media, Audio)
 app.post('/api/messages', (req, res) => {
     const { room, text, image, audio, senderId } = req.body;
     const newMessage = {
-        room: room || 'Utama', text, image, audio, senderId,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        room: room || 'Utama',
+        text,
+        image, // Data Base64 Foto/Video
+        audio, // Data Base64 Voice Note
+        senderId,
+        time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
     };
+    
     messages.push(newMessage);
-    if (messages.length > 500) messages.shift();
+    if (messages.length > 500) messages.shift(); // Simpan 500 pesan terakhir saja
     saveMessages(messages);
-    res.status(201).json({ status: 'OK' });
+    res.status(201).json({ status: 'Terkirim' });
 });
 
+// API: Hapus Chat
+app.delete('/api/messages', (req, res) => {
+    messages = [];
+    saveMessages(messages);
+    res.json({ status: 'Data dihapus' });
+});
+
+// API: Deteksi Online (Heartbeat)
 app.post('/api/heartbeat', (req, res) => {
     const { userId, room } = req.body;
-    onlineUsers[userId] = { room, lastSeen: Date.now() };
+    const sekarang = Date.now();
     
-    // Bersihkan user yang sudah tidak aktif (lebih dari 10 detik)
-    const now = Date.now();
-    Object.keys(onlineUsers).forEach(id => {
-        if (now - onlineUsers[id].lastSeen > 10000) delete onlineUsers[id];
-    });
+    // Update waktu aktif terakhir user
+    onlineUsers[userId] = { room, lastSeen: sekarang };
 
-    const count = Object.values(onlineUsers).filter(u => u.room === room).length;
-    res.json({ onlineCount: count });
+    // Hapus user yang tidak ada kabar lebih dari 10 detik
+    for (const id in onlineUsers) {
+        if (sekarang - onlineUsers[id].lastSeen > 10000) {
+            delete onlineUsers[id];
+        }
+    }
+
+    // Hitung jumlah user aktif di room tersebut
+    const onlineCount = Object.values(onlineUsers).filter(u => u.room === room).length;
+    res.json({ onlineCount: onlineCount });
 });
 
-app.delete('/api/messages', (req, res) => {
-    messages = []; saveMessages(messages);
-    res.json({ status: 'History Cleared' });
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Server aktif di http://localhost:${PORT}`);
 });
-
-module.exports = app;
-if (require.main === module) {
-    const PORT = process.env.PORT || 3000;
-    app.listen(PORT, () => console.log(`Server jalan di port ${PORT}`));
-}
