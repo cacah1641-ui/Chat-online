@@ -1,75 +1,33 @@
 const express = require('express');
-const path = require('path');
 const app = express();
+const path = require('path');
+const fs = require('fs');
 
-// Middleware: Parsing JSON dengan limit 50mb untuk mendukung kiriman Media (Base64)
 app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.static(path.join(__dirname, 'public')));
 
-// Database sementara dalam memori (Akan reset jika server idle di Vercel)
 let messages = [];
 let onlineUsers = {};
 
-// Melayani file statis (a.html dan b.html)
-app.use(express.static(path.join(__dirname, '/')));
-
-/** * API Endpoints
- */
-
-// Ambil semua pesan
-app.get('/api/messages', (req, res) => {
-    res.status(200).json(messages);
-});
-
-// Kirim pesan baru
+app.get('/api/messages', (req, res) => res.json(messages));
 app.post('/api/messages', (req, res) => {
-    const { text, image, audio, senderId } = req.body;
-    
-    if (!senderId) return res.status(400).json({ error: "Sender ID diperlukan" });
-
-    const newMessage = {
-        senderId,
-        text: text || '',
-        image: image || null,
-        audio: audio || null,
-        time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-    };
-
-    messages.push(newMessage);
-    
-    // Batasi riwayat pesan di memori agar tidak crash (Max 100 pesan)
+    const msg = { ...req.body, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
+    messages.push(msg);
     if (messages.length > 100) messages.shift();
-    
     res.status(201).json({ status: 'OK' });
 });
 
-// Heartbeat untuk status online
 app.post('/api/heartbeat', (req, res) => {
     const { userId } = req.body;
-    if (userId) {
-        onlineUsers[userId] = Date.now();
+    onlineUsers[userId] = Date.now();
+    const sekarang = Date.now();
+    for (const id in onlineUsers) {
+        if (sekarang - onlineUsers[id] > 8000) delete onlineUsers[id];
     }
-
-    const now = Date.now();
-    // User dianggap offline jika tidak ada heartbeat selama lebih dari 8 detik
-    const activeUsers = Object.keys(onlineUsers).filter(id => (now - onlineUsers[id]) < 8000);
-
-    res.json({ usersOnline: activeUsers });
+    res.json({ onlineCount: Object.keys(onlineUsers).length });
 });
 
-// Hapus chat
-app.delete('/api/messages', (req, res) => {
-    messages = [];
-    res.json({ status: 'Deleted' });
-});
+app.delete('/api/messages', (req, res) => { messages = []; res.json({ status: 'OK' }); });
 
-// Ekspor app untuk Vercel
-module.exports = app;
-
-// Jalankan server jika dijalankan secara lokal
-if (require.main === module) {
-    const PORT = process.env.PORT || 3000;
-    app.listen(PORT, () => {
-        console.log(`Server aktif di port ${PORT}`);
-    });
-}
+const PORT = 3000;
+app.listen(PORT, () => console.log(`Server jalan di http://localhost:${PORT}`));
