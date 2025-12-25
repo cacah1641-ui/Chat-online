@@ -3,8 +3,8 @@ const app = express();
 const path = require('path');
 const fs = require('fs');
 
-// Gunakan /tmp untuk Vercel agar tidak error saat menulis file
-const DB_FILE = process.env.NODE_ENV === 'production' ? '/tmp/messages.json' : './messages.json';
+// Gunakan folder /tmp agar Vercel bisa menulis file sementara
+const DB_FILE = '/tmp/messages.json';
 
 function loadMessages() {
     try {
@@ -16,7 +16,7 @@ function loadMessages() {
 function saveMessages(data) {
     try {
         fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
-    } catch (e) { console.error("Gagal simpan database!"); }
+    } catch (e) { console.error("Gagal simpan file!"); }
 }
 
 app.use(express.json({ limit: '50mb' }));
@@ -25,13 +25,11 @@ app.use(express.static(path.join(__dirname, 'public')));
 let messages = loadMessages();
 let onlineUsers = {}; 
 
-// Ambil pesan
 app.get('/api/messages', (req, res) => {
     const room = req.query.room || 'Utama';
     res.json(messages.filter(m => m.room === room));
 });
 
-// Kirim pesan
 app.post('/api/messages', (req, res) => {
     const { room, text, image, audio, senderId } = req.body;
     const newMessage = {
@@ -44,34 +42,27 @@ app.post('/api/messages', (req, res) => {
     res.status(201).json({ status: 'OK' });
 });
 
-// Status Online & Jumlah User
 app.post('/api/heartbeat', (req, res) => {
     const { userId, room } = req.body;
-    const now = Date.now();
+    onlineUsers[userId] = { room, lastSeen: Date.now() };
     
-    // Simpan/Update waktu aktif user
-    onlineUsers[userId] = { room, lastSeen: now };
-
-    // Hapus user yang sudah tidak aktif lebih dari 10 detik
+    // Bersihkan user yang sudah tidak aktif (lebih dari 10 detik)
+    const now = Date.now();
     Object.keys(onlineUsers).forEach(id => {
         if (now - onlineUsers[id].lastSeen > 10000) delete onlineUsers[id];
     });
 
-    const usersInRoom = Object.values(onlineUsers).filter(u => u.room === room);
-    res.json({ 
-        onlineCount: usersInRoom.length,
-        isPeerOnline: usersInRoom.length > 1 
-    });
+    const count = Object.values(onlineUsers).filter(u => u.room === room).length;
+    res.json({ onlineCount: count });
 });
 
 app.delete('/api/messages', (req, res) => {
-    messages = [];
-    saveMessages(messages);
-    res.json({ status: 'Cleared' });
+    messages = []; saveMessages(messages);
+    res.json({ status: 'History Cleared' });
 });
 
-const PORT = process.env.PORT || 3000;
-if (require.main === module) {
-    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-}
 module.exports = app;
+if (require.main === module) {
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, () => console.log(`Server jalan di port ${PORT}`));
+}
